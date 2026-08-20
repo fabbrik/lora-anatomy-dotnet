@@ -1,0 +1,13 @@
+[project]
+name = "lora-anatomy-reference"
+version = "0.1.0"
+description = "Python ground truth for the C# LoRA merge"
+requires-python = ">=3.11"
+dependencies = [
+    "torch>=2.4",
+    "transformers>=4.44",
+    "peft>=0.13",
+    "safetensors>=0.4",
+    "numpy",
+    "huggingface-hub>=1.27.0",
+]

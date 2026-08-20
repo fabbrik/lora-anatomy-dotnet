@@ -1,0 +1,8 @@
+bin/
+obj/
+reference/.venv/
+reference/out/
+__pycache__/
+*.user
+out-real/
+out/

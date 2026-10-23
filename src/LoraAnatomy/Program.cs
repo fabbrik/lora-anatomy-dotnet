@@ -44,7 +44,7 @@ int alpha = cfgDoc.RootElement.GetProperty("lora_alpha").GetInt32();
 // GOTCHA: older adapters have no "use_rslora" key at all -- it must default to
 // false rather than being read blindly. With rsLoRA the divisor is sqrt(r).
 bool useRsLora = cfgDoc.RootElement.TryGetProperty("use_rslora", out var rs) && rs.GetBoolean();
-double scaling = useRsLora ? alpha / Math.Sqrt(r) : (double)alpha / r;
+double scaling = LoraMerge.Scaling(r, alpha, useRsLora);
 
 Console.WriteLine("=== adapter_config.json ===");
 Console.WriteLine($"  r            = {r}");
@@ -125,7 +125,7 @@ Console.WriteLine();
     var A = adapter[$"{target}.lora_A.weight"];
     var B = adapter[$"{target}.lora_B.weight"];
     var w0 = truth[$"{plain}.w0"];
-    var wPrime = w0 + scaling * B.matmul(A);
+    var wPrime = LoraMerge.Merge(w0, A, B, scaling);
 
     var x = truth["x"];
     var yBase = x.matmul(w0.T);

@@ -21,6 +21,9 @@ public static class SafeTensors
         using var reader = new BinaryReader(stream);
 
         ulong headerLen = reader.ReadUInt64();
+        if (headerLen > (ulong)(stream.Length - 8))
+            throw new InvalidDataException(
+                $"safetensors header length {headerLen} exceeds file size {stream.Length}: not a safetensors file, or truncated.");
         string headerJson = Encoding.UTF8.GetString(reader.ReadBytes((int)headerLen));
 
         long dataStart = 8 + (long)headerLen;
@@ -66,11 +69,21 @@ public static class SafeTensors
             }
             case "F16":
             {
-                // No managed half-precision path here: read as raw bytes and let
-                // TorchSharp reinterpret, then promote to float32 for arithmetic.
-                var values = new short[raw.Length / 2];
-                Buffer.BlockCopy(raw, 0, values, 0, raw.Length);
-                return tensor(values, shape).view_as_real().to(ScalarType.Float32);
+                // IEEE half -> float32. Decoded by hand: torch.tensor(short[]) would
+                // reinterpret nothing, it would just cast the integer bit patterns.
+                var values = new float[raw.Length / 2];
+                for (int i = 0; i < values.Length; i++)
+                    values[i] = (float)BitConverter.ToHalf(raw, i * 2);
+                return tensor(values, shape);
+            }
+            case "BF16":
+            {
+                // bfloat16 is the top 16 bits of a float32, so widening is a shift.
+                // Most adapters trained on recent GPUs are stored this way.
+                var values = new float[raw.Length / 2];
+                for (int i = 0; i < values.Length; i++)
+                    values[i] = BitConverter.UInt32BitsToSingle((uint)BitConverter.ToUInt16(raw, i * 2) << 16);
+                return tensor(values, shape);
             }
             default:
                 throw new NotSupportedException(

@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/LoraAnatomy/LoraAnatomy.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/LoraAnatomy.Tests/LoraAnatomy.Tests.csproj" />
+  </Folder>
+</Solution>

@@ -94,8 +94,10 @@ reference/                  Python ground truth (torch + transformers + peft)
   make_real_reference.py      published Hub adapter + its real base model
   scan_adapters.py            checks published adapters for all-zero lora_B
 src/LoraAnatomy/            .NET 10 + TorchSharp
-  SafeTensors.cs              minimal safetensors reader
+  SafeTensors.cs              minimal safetensors reader (F32/F64/F16/BF16)
+  LoraMerge.cs                scaling, merge, inert-adapter check
   Program.cs                  inspect, reconstruct delta-W, merge, verify
+tests/LoraAnatomy.Tests/    unit tests
 GOTCHAS.md                  what bit, with the numbers
 ```
 
@@ -108,7 +110,20 @@ TensorFlow.NET was considered and rejected: no active maintainers, pinned to
 TF 2.10 / CUDA 11, and mismatched with a PEFT ecosystem that is PyTorch-native
 end to end.
 
+## Tests
+
+```bash
+dotnet test LoraAnatomy.slnx      # offline, no model files: reader (F32/F64/F16/BF16) + merge math
+```
+
+The PEFT cross-check above is the integration test; the unit tests pin the pieces
+(scaling incl. rsLoRA, `W0 + (a/r)BA`, the all-zero `lora_B` no-op, shape errors).
+
 ## Status
 
-Rung 1 of a ladder. Next: a multi-tenant adapter hot-swap server on ASP.NET —
-one base model, per-request adapter selection.
+Rung 1 of a ladder, complete. Rung 2 is
+[lora-hotswap-server](https://github.com/fabbrik/lora-hotswap-server): one base model,
+per-request adapter selection, on ASP.NET. Ideas for contributors are in
+[AGENTS.md](AGENTS.md) and [CONTRIBUTING.md](CONTRIBUTING.md).
+
+Licensed under the [MIT License](LICENSE).

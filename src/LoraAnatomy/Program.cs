@@ -11,6 +11,14 @@ using static TorchSharp.torch;
 //     W' = W0 + (alpha / r) * B @ A
 // ---------------------------------------------------------------------------
 
+// --- subcommands -------------------------------------------------------------
+//   check <adapter_dir>                          is the adapter actually trained?
+//   merge <adapter_dir> <base.safetensors> <out> merge into a base checkpoint, write it out
+if (args.FirstOrDefault() is "check" or "merge")
+{
+    return Cli.Run(args);
+}
+
 // "synthetic" -> reference/out      (toy model, built offline by make_reference.py)
 // "real"      -> reference/out-real (published Hub adapter, make_real_reference.py)
 string which = args.FirstOrDefault() ?? "synthetic";

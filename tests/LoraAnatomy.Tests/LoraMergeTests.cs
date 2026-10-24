@@ -56,3 +56,76 @@ public class LoraMergeTests
     public void Mismatched_shapes_are_rejected()
         => Assert.Throws<ArgumentException>(() => LoraMerge.Merge(zeros(4, 6), zeros(2, 6), zeros(4, 3), 1.0));
 }
+
+public sealed class CheckpointMergeTests : IDisposable
+{
+    private readonly string _dir = Directory.CreateTempSubdirectory("lora-anatomy-ckpt-").FullName;
+
+    public void Dispose() => Directory.Delete(_dir, recursive: true);
+
+    private const string Module = "base_model.model.model.layers.0.self_attn.q_proj";
+    private const string Key = "model.layers.0.self_attn.q_proj.weight";
+
+    private static Dictionary<string, Tensor> Adapter(Tensor b) => new()
+    {
+        [$"{Module}.lora_A.weight"] = tensor(new float[] { 1, 2 }, [1, 2]),
+        [$"{Module}.lora_B.weight"] = b,
+    };
+
+    [Fact]
+    public void Base_key_drops_the_peft_prefix_and_adds_weight()
+        => Assert.Equal(Key, LoraMerge.BaseKeyFor(Module));
+
+    [Fact]
+    public void Patches_targeted_modules_and_passes_the_rest_through()
+    {
+        var other = ones(3, 3);
+        var baseWeights = new Dictionary<string, Tensor> { [Key] = eye(2), ["model.norm.weight"] = other };
+
+        var (merged, patched) = LoraMerge.MergeCheckpoint(baseWeights, Adapter(tensor(new float[] { 1, 3 }, [2, 1])), 2.0);
+
+        Assert.Equal([Key], patched);
+        Assert.Equal(new float[] { 3, 4, 6, 13 }, merged[Key].data<float>().ToArray());
+        Assert.Same(other, merged["model.norm.weight"]);
+    }
+
+    [Fact]
+    public void A_module_the_base_lacks_is_an_error_not_a_skip()
+    {
+        var baseWeights = new Dictionary<string, Tensor> { ["model.norm.weight"] = ones(2) };
+
+        var ex = Assert.Throws<KeyNotFoundException>(() =>
+            LoraMerge.MergeCheckpoint(baseWeights, Adapter(ones(2, 1)), 1.0));
+
+        Assert.Contains(Key, ex.Message);
+    }
+
+    [Fact]
+    public void Written_checkpoint_reads_back_identically()
+    {
+        var tensors = new Dictionary<string, Tensor> { ["a"] = randn(3, 4), ["b.weight"] = randn(5) };
+        string path = Path.Combine(_dir, "out.safetensors");
+
+        SafeTensorsWriter.Save(path, tensors);
+        var back = SafeTensors.Load(path);
+
+        Assert.Equal(tensors.Keys.Order(), back.Keys.Order());
+        foreach (var (name, t) in tensors)
+        {
+            Assert.Equal(t.shape, back[name].shape);
+            Assert.Equal(0f, (t - back[name]).abs().max().item<float>());
+        }
+    }
+
+    [Fact]
+    public void Same_tensors_write_byte_identical_files()
+    {
+        var tensors = new Dictionary<string, Tensor> { ["z"] = ones(2), ["a"] = zeros(2) };
+        string one = Path.Combine(_dir, "1.safetensors"), two = Path.Combine(_dir, "2.safetensors");
+
+        SafeTensorsWriter.Save(one, tensors);
+        SafeTensorsWriter.Save(two, tensors);
+
+        Assert.Equal(File.ReadAllBytes(one), File.ReadAllBytes(two));
+    }
+}

@@ -30,4 +30,45 @@ public static class LoraMerge
     /// no-op (<c>BA = 0</c>). PEFT initialises B to zero, and some published adapters never left it.
     /// </summary>
     public static bool IsInert(Tensor loraB) => loraB.abs().max().item<float>() == 0f;
+
+    private const string PeftPrefix = "base_model.model.";
+
+    /// <summary>
+    /// The base-checkpoint key an adapter module patches: the PEFT wrapper prefix is dropped and
+    /// <c>.weight</c> appended, so <c>base_model.model.model.layers.0.self_attn.q_proj</c> patches
+    /// <c>model.layers.0.self_attn.q_proj.weight</c>.
+    /// </summary>
+    public static string BaseKeyFor(string module) =>
+        (module.StartsWith(PeftPrefix, StringComparison.Ordinal) ? module[PeftPrefix.Length..] : module) + ".weight";
+
+    /// <summary>
+    /// Merge every module in an adapter into a base checkpoint and return the whole patched
+    /// checkpoint. Tensors the adapter does not touch pass through unchanged. A module the
+    /// adapter targets but the base lacks is an error: silently skipping it would produce a
+    /// "merged" model that is partly just the base.
+    /// </summary>
+    public static (Dictionary<string, Tensor> Merged, IReadOnlyList<string> PatchedKeys) MergeCheckpoint(
+        IReadOnlyDictionary<string, Tensor> baseWeights, IReadOnlyDictionary<string, Tensor> adapter, double scaling)
+    {
+        var merged = new Dictionary<string, Tensor>(baseWeights);
+        var patched = new List<string>();
+        var modules = adapter.Keys
+            .Where(k => k.EndsWith(".lora_A.weight", StringComparison.Ordinal))
+            .Select(k => k[..^".lora_A.weight".Length])
+            .OrderBy(k => k, StringComparer.Ordinal);
+
+        foreach (string module in modules)
+        {
+            string key = BaseKeyFor(module);
+            if (!baseWeights.TryGetValue(key, out Tensor? w0))
+                throw new KeyNotFoundException($"adapter module '{module}' targets '{key}', which the base checkpoint does not contain.");
+            if (!adapter.TryGetValue($"{module}.lora_B.weight", out Tensor? b))
+                throw new KeyNotFoundException($"adapter module '{module}' has lora_A but no lora_B.");
+
+            merged[key] = Merge(w0, adapter[$"{module}.lora_A.weight"], b, scaling);
+            patched.Add(key);
+        }
+
+        return (merged, patched);
+    }
 }

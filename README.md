@@ -78,6 +78,26 @@ exactly is *also* consistent with the adapter being a no-op. So the repo asserts
 both that the merged activation matches PEFT's **and** that it differs from the
 base. See [GOTCHAS.md](GOTCHAS.md).
 
+## Use it on your own adapter
+
+```bash
+cd src/LoraAnatomy
+dotnet run -- check  path/to/adapter_dir            # is it actually trained?  exit 0 / 1 (inert) / 2 (error)
+dotnet run -- merge  path/to/adapter_dir base.safetensors merged.safetensors
+```
+
+`check` reads `adapter_model.safetensors` + `adapter_config.json`, reports rank, alpha, the real
+scaling (including rsLoRA), and whether every `lora_B` is zero. Use it to vet an adapter before
+you ship it: some popular published ones are silent no-ops.
+
+`merge` patches every targeted module into a base checkpoint and writes the whole result as
+float32 safetensors. It refuses an inert adapter, and it errors if the adapter targets a module the
+base does not have, rather than writing a half-merged model. Merging needs the base weights as a
+single safetensors file; sharded checkpoints are not handled yet.
+
+As a library, `SafeTensors`, `SafeTensorsWriter` and `LoraMerge` are plain static classes over
+TorchSharp tensors.
+
 ## One finding worth its own line
 
 `ybelkada/opt-350m-lora` — around 118k downloads, one of the most-downloaded
@@ -95,7 +115,9 @@ reference/                  Python ground truth (torch + transformers + peft)
   scan_adapters.py            checks published adapters for all-zero lora_B
 src/LoraAnatomy/            .NET 10 + TorchSharp
   SafeTensors.cs              minimal safetensors reader (F32/F64/F16/BF16)
-  LoraMerge.cs                scaling, merge, inert-adapter check
+  LoraMerge.cs                scaling, merge, checkpoint merge, inert-adapter check
+  SafeTensorsWriter.cs        float32 safetensors writer
+  Cli.cs                      the check / merge subcommands
   Program.cs                  inspect, reconstruct delta-W, merge, verify
 tests/LoraAnatomy.Tests/    unit tests
 GOTCHAS.md                  what bit, with the numbers
